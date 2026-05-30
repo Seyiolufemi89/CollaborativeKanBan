@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { io } from 'socket.io-client';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 
@@ -29,21 +29,17 @@ const initialData = {
   },
   columnOrder: ['column-todo', 'column-in-progress', 'column-done'],
 };
-
 function App() {
   const [isConnected, setIsConnected] = useState(socket.connected);
   const [boardData, setBoardData] = useState(initialData);
 
-  useEffect(() => {
-    socket.on('connect', () => setIsConnected(true));
-    socket.on('disconnect', () => setIsConnected(false));
-    return () => {
-      socket.off('connect');
-      socket.off('disconnect');
-    };
+  // Dedicated function to update the board state from network events smoothly
+  const updateBoardFromNetwork = useCallback((newBoardState) => {
+    setBoardData(newBoardState);
   }, []);
 
-  const onDragEnd = (result) => {
+  // onDragEnd now only handles local user interactions
+  const onDragEnd = useCallback((result) => {
     const { destination, source, draggableId } = result;
     if (!destination) return;
     if (destination.droppableId === source.droppableId && destination.index === source.index) return;
@@ -51,19 +47,28 @@ function App() {
     const startColumn = boardData.columns[source.droppableId];
     const finishColumn = boardData.columns[destination.droppableId];
 
+    // Case 1: Moving within the same column
     if (startColumn === finishColumn) {
       const newTaskIds = Array.from(startColumn.taskIds);
       newTaskIds.splice(source.index, 1);
       newTaskIds.splice(destination.index, 0, draggableId);
 
       const newColumn = { ...startColumn, taskIds: newTaskIds };
-      setBoardData({
+      
+      const updatedBoard = {
         ...boardData,
-        columns: { ...boardData.columns, [newColumn.id]: newColumn },
-      });
+        columns: {
+          ...boardData.columns,
+          [newColumn.id]: newColumn,
+        },
+      };
+
+      setBoardData(updatedBoard);
+      socket.emit('card-moved', updatedBoard);
       return;
     }
 
+    // Case 2: Moving between different columns
     const startTaskIds = Array.from(startColumn.taskIds);
     startTaskIds.splice(source.index, 1);
     const newStartColumn = { ...startColumn, taskIds: startTaskIds };
@@ -72,17 +77,39 @@ function App() {
     finishTaskIds.splice(destination.index, 0, draggableId);
     const newFinishColumn = { ...finishColumn, taskIds: finishTaskIds };
 
-    setBoardData({
+    const updatedBoard = {
       ...boardData,
       columns: {
         ...boardData.columns,
         [newStartColumn.id]: newStartColumn,
         [newFinishColumn.id]: newFinishColumn,
       },
-    });
-  };
+    };
 
-  return (
+    setBoardData(updatedBoard);
+    socket.emit('card-moved', updatedBoard);
+
+  }, [boardData]);
+
+  useEffect(() => {
+    socket.on('connect', () => setIsConnected(true));
+    socket.on('disconnect', () => setIsConnected(false));
+    
+    // Listen for board updates and apply them using the clean sync function
+    socket.on('board-updated', (data) => {
+      updateBoardFromNetwork(data);
+    });
+
+    return () => {
+      socket.off('connect');
+      socket.off('disconnect');
+      socket.off('board-updated');
+    };
+  }, [updateBoardFromNetwork]);
+
+
+
+return (
     <div style={{ padding: '30px', background: '#0f172a', minHeight: '100vh', color: '#f8fafc', fontFamily: 'sans-serif' }}>
       <header style={{ textAlign: 'center', marginBottom: '30px' }}>
         <h1 style={{ margin: '0 0 10px 0' }}>Collaborative Kanban Board</h1>
@@ -92,6 +119,7 @@ function App() {
       </header>
 
       <DragDropContext onDragEnd={onDragEnd}>
+        {/* The Flex Container now ONLY holds your column mappings */}
         <div style={{ display: 'flex', gap: '20px', justifyContent: 'center', maxWidth: '1200px', margin: '0 auto' }}>
           {boardData.columnOrder.map((columnId) => {
             const column = boardData.columns[columnId];

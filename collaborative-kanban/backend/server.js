@@ -14,6 +14,14 @@ const io = new Server(httpServer, {
 
 io.on('connection', (socket) => {
   console.log(`User connected: ${socket.id}`);
+
+  // Listen for the movement data
+  socket.on('card-moved', (data) => {
+    socket.broadcast.emit('board-updated', data);
+      console.log(`Card moved: ${JSON.stringify(data)}`);
+      // Broadcast the movement data to all other connected clients
+  });
+
   socket.on('disconnect', () => {
     console.log(`User disconnected: ${socket.id}`);
   });
