@@ -91,11 +91,16 @@ function App() {
 
   }, [boardData]);
 
-  useEffect(() => {
+ useEffect(() => {
     socket.on('connect', () => setIsConnected(true));
     socket.on('disconnect', () => setIsConnected(false));
     
-    // Listen for board updates and apply them using the clean sync function
+    // Listen for the initial server data when the app loads
+    socket.on('initial-board-state', (data) => {
+      updateBoardFromNetwork(data);
+    });
+
+    // Listen for real-time live movements from other clients
     socket.on('board-updated', (data) => {
       updateBoardFromNetwork(data);
     });
@@ -103,6 +108,7 @@ function App() {
     return () => {
       socket.off('connect');
       socket.off('disconnect');
+      socket.off('initial-board-state');
       socket.off('board-updated');
     };
   }, [updateBoardFromNetwork]);
