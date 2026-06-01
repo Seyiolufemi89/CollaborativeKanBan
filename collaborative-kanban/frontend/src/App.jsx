@@ -33,21 +33,11 @@ function App() {
   const [isConnected, setIsConnected] = useState(socket.connected);
   const [boardData, setBoardData] = useState(initialData);
 
-  // Loading boundary until the server pushes the real database state
-  if (!boardData || !boardData.columnOrder) {
-    return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', background: '#0f172a', color: '#f8fafc' }}>
-        <h3>Hydrating System Board State from Database...</h3>
-      </div>
-    );
-  }
-
-  // Dedicated function to update the board state from network events smoothly
+  // 1. ALL HOOKS MUST SIT AT THE TOP UNBLOCKED
   const updateBoardFromNetwork = useCallback((newBoardState) => {
     setBoardData(newBoardState);
   }, []);
 
-  // onDragEnd now only handles local user interactions
   const onDragEnd = useCallback((result) => {
     const { destination, source, draggableId } = result;
     if (!destination) return;
@@ -56,20 +46,15 @@ function App() {
     const startColumn = boardData.columns[source.droppableId];
     const finishColumn = boardData.columns[destination.droppableId];
 
-    // Case 1: Moving within the same column
     if (startColumn === finishColumn) {
       const newTaskIds = Array.from(startColumn.taskIds);
       newTaskIds.splice(source.index, 1);
       newTaskIds.splice(destination.index, 0, draggableId);
 
       const newColumn = { ...startColumn, taskIds: newTaskIds };
-      
       const updatedBoard = {
         ...boardData,
-        columns: {
-          ...boardData.columns,
-          [newColumn.id]: newColumn,
-        },
+        columns: { ...boardData.columns, [newColumn.id]: newColumn },
       };
 
       setBoardData(updatedBoard);
@@ -77,7 +62,6 @@ function App() {
       return;
     }
 
-    // Case 2: Moving between different columns
     const startTaskIds = Array.from(startColumn.taskIds);
     startTaskIds.splice(source.index, 1);
     const newStartColumn = { ...startColumn, taskIds: startTaskIds };
@@ -97,19 +81,16 @@ function App() {
 
     setBoardData(updatedBoard);
     socket.emit('card-moved', updatedBoard);
-
   }, [boardData]);
 
-useEffect(() => {
+  useEffect(() => {
     socket.on('connect', () => setIsConnected(true));
     socket.on('disconnect', () => setIsConnected(false));
     
-    // 1. Hydrate the UI layout from the MongoDB document on initial page load
     socket.on('initial-board-state', (data) => {
       updateBoardFromNetwork(data);
     });
 
-    // 2. Keep listening for real-time live movements from other windows
     socket.on('board-updated', (data) => {
       updateBoardFromNetwork(data);
     });
@@ -122,6 +103,16 @@ useEffect(() => {
     };
   }, [updateBoardFromNetwork]);
 
+  // ==========================================
+  // 2. PLACE CONDITIONAL GUARDS HERE (AFTER HOOKS)
+  // ==========================================
+  if (!boardData || !boardData.columnOrder) {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', background: '#0f172a', color: '#f8fafc' }}>
+        <h3>Hydrating System Board State from Database...</h3>
+      </div>
+    );
+  }
 
 
 return (
