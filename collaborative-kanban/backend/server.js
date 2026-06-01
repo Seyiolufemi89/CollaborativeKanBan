@@ -1,6 +1,7 @@
 import express from 'express';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
+import mongoose from 'mongoose';
 
 const app = express();
 const httpServer = createServer(app);
@@ -12,8 +13,39 @@ const io = new Server(httpServer, {
   }
 });
 
-// 1. Hardcode the baseline data on the server so it can act as the single source of truth
-let currentBoardData = {
+// ==========================================
+// 1. DATABASE CONNECTION & CONFIGURATION
+// ==========================================
+// REPLACE THIS STRING with your actual connection string from MongoDB Atlas!
+const MONGO_URI = "mongodb+srv://<username>:<password>@cluster0.xxxx.mongodb.net/kanban?retryWrites=true&w=majority";
+
+mongoose.connect(MONGO_URI)
+  .then(() => console.log('✅ Successfully connected to MongoDB Atlas durable layer.'))
+  .catch((err) => console.error('❌ MongoDB Connection Error:', err));
+
+// ==========================================
+// 2. MONGOOSE SCHEMA DEFINITIONS
+// ==========================================
+// We define a single unified Board schema to preserve our atomic Kanban layout structure
+const BoardSchema = new mongoose.Schema({
+  boardId: { type: String, default: "default-master-board", unique: true },
+  tasks: { type: Map, of: new mongoose.Schema({ id: String, content: String }, { _id: false }) },
+  columns: {
+    type: Map,
+    of: new mongoose.Schema({
+      id: String,
+      title: String,
+      taskIds: [String]
+    }, { _id: false })
+  },
+  columnOrder: [String]
+}, { timestamps: true });
+
+const Board = mongoose.model('Board', BoardSchema);
+
+// Fallback seed data if the database is completely empty on initial startup
+const initialSeedData = {
+  boardId: "default-master-board",
   tasks: {
     'task-1': { id: 'task-1', content: 'Set up Vite frontend architecture' },
     'task-2': { id: 'task-2', content: 'Configure Node.js WS server handles' },
@@ -27,18 +59,52 @@ let currentBoardData = {
   columnOrder: ['column-todo', 'column-in-progress', 'column-done'],
 };
 
-io.on('connection', (socket) => {
+// ==========================================
+// 3. REAL-TIME EVENT PIPELINES
+// ==========================================
+io.on('connection', async (socket) => {
   console.log(`User connected: ${socket.id}`);
 
-  // 2. As soon as a browser connects, instantly send them the latest saved board state
-  socket.emit('initial-board-state', currentBoardData);
-
-  socket.on('card-moved', (data) => {
-    // 3. Update our server's master copy whenever a card moves
-    currentBoardData = data; 
+  try {
+    // Attempt to query the master board layout from MongoDB
+    let board = await Board.findOne({ boardId: "default-master-board" });
     
-    socket.broadcast.emit('board-updated', data);
-    console.log(`Card moved & state updated on server.`);
+    // If it's a fresh database instance, seed the initial data document immediately
+    if (!board) {
+      board = await Board.create(initialSeedData);
+      console.log('🌱 Database was empty. Seeded baseline document collections.');
+    }
+
+    // Serve the persistent database state to the newly connected browser instantly
+    socket.emit('initial-board-state', board);
+
+  } catch (error) {
+    console.error('Error fetching initial state from MongoDB:', error);
+  }
+
+  // Handle live drag-and-drop actions
+  socket.on('card-moved', async (updatedBoardData) => {
+    try {
+      // Broadcast the visual movement to all secondary clients immediately for zero UI latency
+      socket.broadcast.emit('board-updated', updatedBoardData);
+
+      // Persist the updated configuration asynchronously to MongoDB
+      await Board.findOneAndUpdate(
+        { boardId: "default-master-board" },
+        { 
+          $set: {
+            tasks: updatedBoardData.tasks,
+            columns: updatedBoardData.columns,
+            columnOrder: updatedBoardData.columnOrder
+          }
+        },
+        { new: true, upsert: true }
+      );
+      
+      console.log(`💾 State safely persisted to MongoDB document store.`);
+    } catch (error) {
+      console.error('Async Database Write Transaction Failed:', error);
+    }
   });
 
   socket.on('disconnect', () => {
