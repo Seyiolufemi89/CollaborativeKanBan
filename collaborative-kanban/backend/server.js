@@ -17,7 +17,7 @@ const io = new Server(httpServer, {
 // 1. DATABASE CONNECTION & CONFIGURATION
 // ==========================================
 // REPLACE THIS STRING with your actual connection string from MongoDB Atlas!
-const MONGO_URI = "mongodb+srv://<username>:<password>@cluster0.xxxx.mongodb.net/kanban?retryWrites=true&w=majority";
+const MONGO_URI = "mongodb+srv://seyiolufemi89_db_user:UsUumZnEM6LqeIWS@cluster0.5ytvzay.mongodb.net/kanban?retryWrites=true&w=majority&appName=Cluster0";
 
 mongoose.connect(MONGO_URI)
   .then(() => console.log('✅ Successfully connected to MongoDB Atlas durable layer.'))
