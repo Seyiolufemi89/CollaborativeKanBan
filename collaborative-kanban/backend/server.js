@@ -1,3 +1,4 @@
+import 'dotenv/config'; // Loads environmental variables from your .env file on startup
 import express from 'express';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
@@ -17,7 +18,7 @@ const io = new Server(httpServer, {
 // 1. DATABASE CONNECTION & CONFIGURATION
 // ==========================================
 // REPLACE THIS STRING with your actual connection string from MongoDB Atlas!
-const MONGO_URI = "mongodb+srv://seyiolufemi89_db_user:UsUumZnEM6LqeIWS@cluster0.5ytvzay.mongodb.net/kanban?retryWrites=true&w=majority&appName=Cluster0";
+const MONGO_URI = process.env.MONGO_URI;
 
 mongoose.connect(MONGO_URI)
   .then(() => console.log('✅ Successfully connected to MongoDB Atlas durable layer.'))

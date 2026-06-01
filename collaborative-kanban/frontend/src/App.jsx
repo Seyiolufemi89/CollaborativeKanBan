@@ -33,6 +33,15 @@ function App() {
   const [isConnected, setIsConnected] = useState(socket.connected);
   const [boardData, setBoardData] = useState(initialData);
 
+  // Loading boundary until the server pushes the real database state
+  if (!boardData || !boardData.columnOrder) {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', background: '#0f172a', color: '#f8fafc' }}>
+        <h3>Hydrating System Board State from Database...</h3>
+      </div>
+    );
+  }
+
   // Dedicated function to update the board state from network events smoothly
   const updateBoardFromNetwork = useCallback((newBoardState) => {
     setBoardData(newBoardState);
@@ -91,16 +100,16 @@ function App() {
 
   }, [boardData]);
 
- useEffect(() => {
+useEffect(() => {
     socket.on('connect', () => setIsConnected(true));
     socket.on('disconnect', () => setIsConnected(false));
     
-    // Listen for the initial server data when the app loads
+    // 1. Hydrate the UI layout from the MongoDB document on initial page load
     socket.on('initial-board-state', (data) => {
       updateBoardFromNetwork(data);
     });
 
-    // Listen for real-time live movements from other clients
+    // 2. Keep listening for real-time live movements from other windows
     socket.on('board-updated', (data) => {
       updateBoardFromNetwork(data);
     });
